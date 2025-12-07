@@ -1,0 +1,594 @@
+<!doctype html>
+<html lang="ar">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>أحلام عبر الزمن — حلقة 01: حلم الأهرامات</title>
+<style>
+  :root{
+    --bg:#070614; --panel:#0e0d1a; --accent:#6f3bd6; --text:#ffffff;
+    --card-grad: linear-gradient(180deg,#0b0b12,#06050a);
+  }
+  body{margin:0;background:var(--bg);font-family: "Noto Kufi Arabic", Tahoma, Arial; color:var(--text); display:flex;justify-content:center;padding:18px}
+  #player{width:1080px;max-width:96vw;background:var(--card-grad);border-radius:12px;padding:14px;box-shadow:0 12px 40px rgba(0,0,0,0.6)}
+  header{display:flex;align-items:center;gap:12px}
+  h1{font-size:20px;margin:0}
+  .meta{opacity:0.9;font-size:13px}
+  #sketch{margin-top:12px;border-radius:10px;overflow:hidden}
+  .controls{display:flex;align-items:center;justify-content:space-between;margin-top:10px;gap:8px}
+  .left-controls{display:flex;gap:8px;align-items:center}
+  button{background:linear-gradient(180deg,#5a3ad1,#2f1b7a);border:none;color:white;padding:8px 12px;border-radius:8px;cursor:pointer;font-weight:600}
+  button.secondary{background:transparent;border:1px solid rgba(255,255,255,0.08)}
+  select{background:#0b0b12;border:1px solid rgba(255,255,255,0.06);padding:6px;border-radius:8px;color:#fff}
+  #timeLabel{font-weight:700}
+  footer{margin-top:10px;font-size:13px;color:rgba(255,255,255,0.75)}
+  .hint{opacity:0.85;font-size:13px}
+  /* responsive */
+  @media (max-width:720px){ #player{padding:10px} h1{font-size:16px} }
+</style>
+</head>
+<body>
+  <div id="player" role="application" aria-label="مشغل حلقة أحلام عبر الزمن">
+    <header>
+      <div style="flex:1">
+        <h1>أحلام عبر الزمن — الحلقة 01: حلم الأهرامات</h1>
+        <div class="meta">مدة الحلقة: ~8:00 — نهاية غنائية: ~40s (أصوات آلية)</div>
+      </div>
+      <div style="text-align:right">
+        <div class="hint">الشخصيات: الأب — الأم — أحمد — نور (مساعد الحلم) — (أصدقاء)</div>
+      </div>
+    </header>
+
+    <div id="sketch"></div>
+
+    <div class="controls" aria-hidden="false">
+      <div class="left-controls">
+        <button id="playBtn">تشغيل الحلقة</button>
+        <button id="pauseBtn" class="secondary">إيقاف مؤقت</button>
+        <button id="restartBtn" class="secondary">إعادة من البداية</button>
+        <button id="recordBtn">بدء تسجيل</button>
+        <button id="downloadBtn" disabled>تحميل WebM</button>
+      </div>
+      <div>
+        <label class="meta">الوقت: <span id="timeLabel">0:00 / 8:00</span></label>
+      </div>
+    </div>
+
+    <footer>
+      <div>تعليمات سريعة: استخدم زرّ "بدء تسجيل" لتسجيل canvas. لتحسين الأصوات استبدل شيفرة الـspeechSynthesis بملف mp3.</div>
+    </footer>
+  </div>
+
+  <!-- p5.js -->
+  <script src="https://cdn.jsdelivr.net/npm/p5@1.6.0/lib/p5.min.js"></script>
+
+  <script>
+  // ----------------- بيانات الحلقة (مقسمة زمنياً) -----------------
+  // كل قيمة t: ثواني. مجموع = 480s تقريباً
+  const EPISODE = {
+    id: 1,
+    title: "حلم الأهرامات",
+    scenes: [
+      {name:'intro', t:40, text: "موسيقى افتتاحية، شعار المسلسل وشخصيات قصيرة (Intro)"},
+      {name:'sleep-to-gate', t:30, text: "أحمد ينام، الضوء يتحول لبريق ذهبي وظهور نور (مساعد الحلم)"},
+      {name:'approach-pyramids', t:90, text: "الوصول إلى الأهرامات، مناظر خارجية وصوت رياح الصحراء"},
+      {name:'enter-pyramid', t:140, text: "دخول الممرات، نقوش تتوهج، شرح مبسط من نور"},
+      {name:'king-chamber', t:100, text: "غرفة الملك، تابوت مظلم، كشف معلومة علمية بسيطة"},
+      {name:'escape-and-wakeup', t:60, text: "حل لغز، خروج، الاستيقاظ مع معلومة ختامية"}
+    ],
+    total: 480
+  };
+
+  // ----------------- محرك المشاهد والمتغيرات -----------------
+  let sceneIndex = 0, sceneTimer = 0, episodeTimer = 0;
+  let playing = false;
+  let mediaRecorder = null, recordedChunks = [];
+
+  // عناصر DOM
+  let playBtn, pauseBtn, restartBtn, recordBtn, downloadBtn, timeLabel;
+
+  // بعض متغيرات الـp5 sketch
+  const CANVAS_W = 1000, CANVAS_H = 580;
+
+  // شخصيات بيانات (مظهر أنمي مبسط)
+  const characters = {
+    dad: {x:-320,y:260, color:[90,60,140], hairColor:[30,20,10]},
+    mom: {x:-220,y:270, color:[140,80,170], hairColor:[60,40,30]},
+    you: {x:0,y:280, color:[100,160,220], hairColor:[30,50,90]},
+    nur: {x:180,y:220, color:[255,200,80], hairColor:[240,200,60], scale:0.9},
+    friend1: {x:260,y:285, color:[220,140,180], hairColor:[80,40,70]}
+  };
+
+  // إعداد الصوت (WebAudio) لموسيقى الخلفية البسيطة
+  let audioCtx;
+  function ensureAudioCtx(){
+    if(!audioCtx){ audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+    return audioCtx;
+  }
+
+  // ----------------- إعداد DOM وحدثات -----------------
+  function setupControls(){
+    playBtn = document.getElementById('playBtn');
+    pauseBtn = document.getElementById('pauseBtn');
+    restartBtn = document.getElementById('restartBtn');
+    recordBtn = document.getElementById('recordBtn');
+    downloadBtn = document.getElementById('downloadBtn');
+    timeLabel = document.getElementById('timeLabel');
+
+    playBtn.onclick = ()=>{ playing = true; };
+    pauseBtn.onclick = ()=>{ playing = false; };
+    restartBtn.onclick = ()=>{ restartEpisode(); };
+    recordBtn.onclick = ()=>{ toggleRecording(); };
+    downloadBtn.onclick = ()=>{ downloadRecording(); };
+  }
+
+  // ----------------- p5 sketch -----------------
+  function setup(){
+    const cnv = createCanvas(CANVAS_W, CANVAS_H);
+    cnv.parent('sketch');
+    frameRate(30);
+    setupControls();
+    // start paused (user clicks play)
+    playing = false;
+  }
+
+  function draw(){
+    background(10,8,18);
+
+    // progress timers
+    if(playing){
+      const dt = deltaTime/1000;
+      sceneTimer += dt;
+      episodeTimer += dt;
+      const curScene = EPISODE.scenes[sceneIndex];
+      if(sceneTimer >= curScene.t){
+        sceneTimer = 0;
+        sceneIndex++;
+        if(sceneIndex >= EPISODE.scenes.length){ // نهاية الحلقة
+          sceneIndex = EPISODE.scenes.length - 1;
+          playing = false;
+          // شغّل النهاية الغنائية
+          startOutroSongAndVoices();
+        }
+      }
+    }
+
+    // render current scene
+    const scene = EPISODE.scenes[sceneIndex];
+    if(scene.name === 'intro') renderIntro();
+    else if(scene.name === 'sleep-to-gate') renderSleepToGate();
+    else if(scene.name === 'approach-pyramids') renderApproachPyramids();
+    else if(scene.name === 'enter-pyramid') renderEnterPyramid();
+    else if(scene.name === 'king-chamber') renderKingChamber();
+    else if(scene.name === 'escape-and-wakeup') renderEscapeAndWakeup();
+    else background(8,7,14);
+
+    // always draw characters on top with slight parallax
+    drawCharacters(scene);
+
+    // caption
+    drawCaption(scene.text);
+
+    // time label
+    const total = EPISODE.total;
+    const now = Math.floor(episodeTimer);
+    const mm = Math.floor(now/60); const ss = String(now%60).padStart(2,'0');
+    const tmm = Math.floor(total/60); const tss = String(total%60).padStart(2,'0');
+    timeLabel.textContent = mm + ':' + ss + ' / ' + tmm + ':' + tss;
+  }
+
+  // ----------------- رسومات المشاهد (أنمي ستايل) -----------------
+  function renderIntro(){
+    // خلفية نجمية مع شعار متحرك
+    push();
+    // soft vignette
+    for(let i=0;i<8;i++){
+      noStroke();
+      fill(12,10,20,20 + i*8);
+      rect(i*8,i*8,width - i*16,height - i*16);
+    }
+    // نجوم
+    for(let i=0;i<120;i++){
+      const x = (i*73) % width + (frameCount % 300)*0.08;
+      const y = (i*47) % (height*0.6);
+      fill(255,255,230, random(60,220));
+      circle(x, y, random(0.7,2.6));
+    }
+    // نص الشعار
+    textAlign(CENTER, CENTER);
+    fill(255,240,220);
+    textSize(40);
+    text('أحلام عبر الزمن', width/2, height*0.28);
+    textSize(18);
+    fill(220,210,200,200);
+    text('الحلقة 01 — حلم الأهرامات', width/2, height*0.35);
+    // شخصيات تظهر كرسم أنمي صغير يتلاشى
+    const t = (millis()%40000)/40000; // loop 40s
+    for(let i=0;i<5;i++){
+      const sx = width*0.2 + i*140;
+      const sy = height*0.55 + sin(frameCount*0.03 + i)*6;
+      push();
+      translate(sx, sy);
+      scale(0.9 - i*0.06);
+      drawAnimeHead(0,0, characters.you.hairColor, (i===2));
+      pop();
+    }
+    pop();
+    // small subtitle
+    push();
+    translate(width*0.5, height*0.82);
+    fill(200,200,230,140);
+    textSize(14);
+    text('رحلة تبدأ في حلم — تعلّم ولعب ومغامرة', 0, 0);
+    pop();
+  }
+
+  function renderSleepToGate(){
+    // غرفة و سرير يتحول لضوء ذهبي وبوابة
+    background(6,4,12);
+    // غرفة مبسطة
+    push();
+    translate(width*0.5, height*0.6);
+    noStroke();
+    fill(35,24,50);
+    rect(-360, -40, 720, 160, 12); // سرير/أرض
+    // نافذة والنجوم
+    fill(12,10,30);
+    rect(-420,-280,240,160,8);
+    pop();
+
+    // بوابة ذهبية تظهر تدريجياً
+    const p = constrain(sceneTimer / 6.0, 0, 1); // 0..1 during first 6s
+    push();
+    translate(width/2, height*0.42);
+    noStroke();
+    fill(244,200,70, 80 + p*175);
+    ellipse(0,0, 200 + p*680, 200 + p*680);
+    // بوابة شكل مثلث ذهبي
+    fill(240,190,60, 90 + p*165);
+    triangle(-160*p, 220*p, 0, -260*p, 160*p, 220*p);
+    pop();
+
+    // ضباب ذهبي
+    push();
+    noStroke();
+    fill(240,200,80, 12 + p*120);
+    rect(0,0,width,height);
+    pop();
+  }
+
+  function renderApproachPyramids(){
+    // منظر صحراء وأنصاف ظلال الهرم
+    background(18,14,28);
+    // شمس غاربة
+    push(); translate(width*0.78, height*0.18);
+    for(let i=0;i<8;i++){ fill(250,200,100,20); circle(0,0, 120 + i*40); }
+    pop();
+    // رمال مع تدرجات
+    for(let i=0;i<8;i++){
+      noStroke();
+      fill(180,140,90, 40 + i*8);
+      beginShape();
+      vertex(0, height*0.5 + i*18);
+      bezierVertex(width*0.25, height*0.45 + i*12, width*0.75, height*0.6 + i*22, width, height*0.48 + i*10);
+      vertex(width, height);
+      vertex(0, height);
+      endShape(CLOSE);
+    }
+    // هرم بعيد
+    push(); translate(width*0.5, height*0.5);
+    fill(200,170,110);
+    triangle(-240,140, 0,-200, 240,140);
+    // ظل أمامي
+    fill(30,20,10, 70);
+    triangle(-30,140, 0,-200, 240,140);
+    pop();
+  }
+
+  function renderEnterPyramid(){
+    // داخل ممر: جدران منقوشة تتوهج بحسب الوقت
+    background(8,7,14);
+    push(); translate(width/2, height*0.54);
+    // الأرض
+    fill(24,18,12);
+    rect(-400, 140, 800, 220);
+    // جدران منحنية
+    for(let i=0;i<6;i++){
+      const shade = 40 + i*18;
+      fill(120,90,60, shade);
+      rect(-420 + i*40, -260 + i*30, 840 - i*80, 80, 6);
+    }
+    // نقش متوهج متحرك
+    const glow = 120 + Math.sin(frameCount*0.06)*80;
+    push();
+    translate(-40, -60);
+    fill(255,235,180, glow);
+    textSize(22);
+    textAlign(LEFT,TOP);
+    text('𓂀 𓇳 𓏏 𓁐 𓂋 𓈖', -80, -40);
+    pop();
+    pop();
+  }
+
+  function renderKingChamber(){
+    background(12,10,18);
+    // تابوت على منصة مع إضاءات ذهبية
+    push(); translate(width/2, height*0.5);
+    fill(30,20,10);
+    rect(-260, 60, 520, 140, 12); // أرضية
+    // منصة
+    fill(70,50,20);
+    rect(-160, -10, 320, 80, 10);
+    // تابوت
+    fill(240,200,80);
+    rect(-90, -70, 180, 110, 12);
+    // تفاصيل ذهبية
+    stroke(200,160,60); strokeWeight(2);
+    line(-90, -20, 90, -20);
+    noStroke();
+    pop();
+
+    // شعاع ضوئي متصاعد من التابوت
+    push();
+    translate(width/2, height*0.2);
+    for(let i=0;i<6;i++){
+      fill(255,210,120, 16 + i*18);
+      triangle(-140 + i*12, 200, 0, -200, 140 - i*12, 200);
+    }
+    pop();
+  }
+
+  function renderEscapeAndWakeup(){
+    // باب يفتح وخروج بضوء ثم استيقاظ في سرير مع أمك
+    background(6,4,12);
+    // ضوء خارجي
+    push();
+    fill(255,230,180, 30 + Math.sin(frameCount*0.06)*20);
+    rect(0,0,width,height);
+    pop();
+
+    // سرير مبسط يظهر
+    push();
+    translate(width*0.5, height*0.66);
+    fill(36,26,48);
+    rect(-320, -40, 640, 120, 12);
+    fill(240,230,210);
+    ellipse(0,-30,240,110);
+    pop();
+
+    // أم تقف إلى جانب السرير (مخطط)
+    push(); translate(width*0.42, height*0.62);
+    drawAnimeHead(-40, -10, [60,40,30], false);
+    pop();
+  }
+
+  // ----------------- رسم الشخصيات (أنمي بسيط مُحسّن) -----------------
+  function drawCharacters(scene){
+    // نحطهم في أماكن مناسبة حسب المشهد
+    push();
+    // slight parallax with sceneTimer
+    const par = map(sceneTimer, 0, max(1, scene.t), -6, 6, true);
+    // الأب
+    drawFullBody(width/2 + characters.dad.x/3 + par*0.5, characters.dad.y, characters.dad.hairColor, characters.dad.color, 'أب');
+    // الأم
+    drawFullBody(width/2 + characters.mom.x/3 + par*0.4, characters.mom.y, characters.mom.hairColor, characters.mom.color, 'أم');
+    // أنت
+    drawFullBody(width/2 + characters.you.x/6, characters.you.y, characters.you.hairColor, characters.you.color, 'أنت', true);
+    // نور المساعد (طفيف يطير)
+    drawHelper(width/2 + characters.nur.x/6 + Math.sin(frameCount*0.06)*12, characters.nur.y + Math.sin(frameCount*0.08)*8);
+    // صديق
+    drawFullBody(width/2 + characters.friend1.x/6 + par*0.6, characters.friend1.y, characters.friend1.hairColor, characters.friend1.color, 'كريم');
+    pop();
+  }
+
+  function drawFullBody(cx, cy, hairColor = [30,20,10], clothColor=[120,80,200], name='خ', isHero=false){
+    push(); translate(cx, cy);
+    noStroke();
+    // جسم
+    fill(clothColor);
+    rect(-18, 0, 36, 68, 8);
+    // ظل للجسم
+    fill(10,10,10,20); rect(-18, 28, 36, 40, 8);
+    // رأس
+    drawAnimeHead(0, -28, hairColor, isHero);
+    // يد بسيطة تتحرك
+    push();
+    translate(-28, 10);
+    rotate(radians(-10 + Math.sin(frameCount*0.08 + cx*0.01)*6));
+    fill(clothColor[0]-20, clothColor[1]-20, clothColor[2]-20);
+    rect(0, -6, 24, 10, 6);
+    pop();
+    // اسم صغير
+    fill(255,255,255,120); textSize(12); textAlign(CENTER, TOP);
+    text(name, 0, 74);
+    pop();
+  }
+
+  function drawAnimeHead(offX=0, offY=0, hairColor=[30,20,10], highlight=false){
+    push();
+    translate(offX, offY);
+    // ظل الوجه
+    fill(12,10,16,20); ellipse(0,-28,46,50);
+    // وجه
+    fill(255,235,208);
+    ellipse(0,-28,44,48);
+    // شعر (أمامي)
+    fill(hairColor);
+    arc(0,-38,56,64, PI, TWO_PI + 0.2);
+    // خصلة
+    fill(hairColor.map(v=>min(v+30,255)));
+    triangle(-16,-38,-6,-56,-2,-34);
+    // عيون لامعة بنمط أنمي
+    push();
+    translate(-8,-28);
+    fill(255); ellipse(0,0,12,8);
+    fill(24); ellipse(1 + Math.sin(frameCount*0.12)*0.7, 0, 5,5);
+    // بريق
+    fill(255,255,255,200); ellipse(-2,-1,3,2);
+    pop();
+    push();
+    translate(8,-28);
+    fill(255); ellipse(0,0,12,8);
+    fill(24); ellipse(-1 + Math.sin(frameCount*0.11 + 1)*0.7, 0, 5,5);
+    fill(255,255,255,200); ellipse(2,-1,3,2);
+    pop();
+    // فم (يتحرك حسب الكلام)
+    const talking = (playing && (sceneIndex % 2 === 0) && (frameCount % 50 < 25));
+    if(talking){
+      fill(200,80,90); ellipse(0,-12,14,8);
+    } else {
+      noFill(); stroke(130,50,60); strokeWeight(1.6); arc(0,-12,14,6, 0, PI);
+      noStroke();
+    }
+    pop();
+  }
+
+  function drawHelper(x,y){
+    push();
+    translate(x,y);
+    noStroke();
+    // جسم كائن نور لامع
+    fill(255,230,120,220);
+    ellipse(0,0,48,34);
+    // عيون صغيرة
+    fill(30); ellipse(-8, -2, 4,4); ellipse(8, -2, 4,4);
+    // هالة
+    for(let i=0;i<6;i++){
+      fill(255,220,100, 12 - i*2);
+      circle(0,0, 60 + i*8);
+    }
+    pop();
+  }
+
+  // ----------------- حوار / صندوق التسمية -----------------
+  function drawCaption(txt){
+    push();
+    const boxW = width*0.86;
+    const boxH = 96;
+    translate(width*0.07, height - boxH - 18);
+    fill(2,2,6, 200); rect(0,0,boxW,boxH,10);
+    fill(240);
+    textSize(18);
+    textAlign(LEFT, TOP);
+    // word wrap
+    text(txt, 12, 12, boxW - 24, boxH - 24);
+    pop();
+  }
+
+  // ----------------- تسجيل الفيديو من الـcanvas -----------------
+  function toggleRecording(){
+    if(!mediaRecorder){
+      recordedChunks = [];
+      const stream = document.querySelector('canvas').captureStream(30);
+      try {
+        mediaRecorder = new MediaRecorder(stream, {mimeType:'video/webm;codecs=vp9'});
+      } catch(e) {
+        try { mediaRecorder = new MediaRecorder(stream); } catch(err) { alert('التسجيل غير متاح في هذا المتصفح'); return; }
+      }
+      mediaRecorder.ondataavailable = e=>{ if(e.data.size>0) recordedChunks.push(e.data); };
+      mediaRecorder.onstop = ()=>{ downloadBtn.disabled = false; };
+      mediaRecorder.start();
+      recordBtn.textContent = 'إيقاف التسجيل';
+    } else {
+      mediaRecorder.stop();
+      mediaRecorder = null;
+      recordBtn.textContent = 'بدء تسجيل';
+    }
+  }
+  function downloadRecording(){
+    if(recordedChunks.length===0) return;
+    const blob = new Blob(recordedChunks, {type:'video/webm'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = `episode-01-webm.webm`; a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function restartEpisode(){
+    sceneIndex = 0; sceneTimer = 0; episodeTimer = 0; playing = false;
+    downloadBtn.disabled = true;
+    // reset outro flag
+    outroStarted = false;
+  }
+
+  // ----------------- النهاية الغنائية (≈40s) — WebAudio + speechSynthesis -----------------
+  let outroStarted = false;
+  function startOutroSongAndVoices(){
+    if(outroStarted) return;
+    outroStarted = true;
+    playOutroPad();
+    scheduleOutroLines();
+  }
+
+  function playOutroPad(){
+    const ctx = ensureAudioCtx();
+    const master = ctx.createGain(); master.connect(ctx.destination); master.gain.value = 0.12;
+    const baseFreq = 130.81; // C3
+    // slow pad
+    const osc = ctx.createOscillator(); const g = ctx.createGain();
+    osc.type = 'sine'; osc.frequency.value = baseFreq;
+    g.gain.value = 0.04;
+    osc.connect(g); g.connect(master);
+    osc.start(); osc.stop(ctx.currentTime + 42);
+    // arpeggio notes
+    const notes = [261.63, 329.63, 392.00, 523.25]; // C4 E4 G4 C5
+    const t0 = ctx.currentTime + 0.05;
+    for(let i=0;i<20;i++){
+      const o = ctx.createOscillator(); const gg = ctx.createGain();
+      o.type = 'sine'; o.frequency.value = notes[i % notes.length];
+      gg.gain.value = 0.06;
+      o.connect(gg); gg.connect(master);
+      const start = t0 + i*1.8;
+      o.start(start); o.stop(start + 1.1);
+    }
+  }
+
+  function scheduleOutroLines(){
+    // كلمات الأغنية (40s) — نوزعها على هيئة سطور مجمّلة
+    const lines = [
+      {who:'mom', text:'في حضن الصحراء يا أهرامنا، حكايانا تقرأها النجوم'},
+      {who:'dad', text:'أحجارك بتهمس بأسماء قديمة، وتعرفنا معنى الزمن'},
+      {who:'you', text:'نحلم ونغنّي ونمسك أيدي التاريخ، نحميه ونفتخر بيه'},
+      {who:'nur', text:'يا روح المكان، خليك معانا، نور دربنا في الظلام'},
+      {who:'chorus', text:'يا مصر يا أم الحضارات، صوتك في القلب دايمًا ينعاد'}
+    ];
+    let offset = 800; // ms
+    lines.forEach((ln,i)=>{
+      setTimeout(()=>{
+        speakLine(ln.text, ln.who);
+      }, offset);
+      offset += 8000 + Math.random()*1200; // تقريباً 8s بين السطور
+    });
+    // عرض فقاعة معلومة بعد 41s
+    setTimeout(()=>{ showInfoBubble('معلومة: الهرم الأكبر بقي أطول بناء في العالم لآلاف السنين.'); }, offset + 800);
+  }
+
+  function speakLine(txt, who){
+    // speechSynthesis utterance with simple voice settings
+    const u = new SpeechSynthesisUtterance(txt);
+    u.lang = 'ar-EG';
+    // تعديل النبرة حسب المتكلم
+    if(who === 'mom'){ u.pitch = 1.05; u.rate = 0.95; }
+    else if(who === 'dad'){ u.pitch = 0.92; u.rate = 0.9; }
+    else if(who === 'you'){ u.pitch = 1.15; u.rate = 1.02; }
+    else if(who === 'nur'){ u.pitch = 1.25; u.rate = 1.05; }
+    else { u.pitch = 1.0; u.rate = 0.98; }
+    // attempt to pick an Egyptian Arabic voice if available
+    const voices = speechSynthesis.getVoices();
+    const v = voices.find(v=>v.lang && v.lang.startsWith('ar')) || voices[0];
+    if(v) u.voice = v;
+    speechSynthesis.speak(u);
+  }
+
+  function showInfoBubble(txt){
+    // رندرة بسيطة لفقاعة معلومة في أعلى اليمين
+    push();
+    translate(width*0.62, height*0.08);
+    fill(0,0,0,220); rect(0,0, width*0.32, 64, 8);
+    fill(255); textSize(15); textAlign(LEFT, TOP);
+    text(txt, 12, 8, width*0.32 - 24, 48);
+    pop();
+  }
+
+  // ----------------- مفيد: تهيئة أصوات الكلام (بعض متصفحات تحتاج استدعاء getVoices) -----
+  // load voices on page interaction
+  window.addEventListener('click', () => { speechSynthesis.getVo
